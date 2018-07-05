@@ -48,4 +48,4 @@ systemctl disable serial-getty@ttyS0
 
 # start
 
-python3 img-mov-srv.py [ <basedir> ]
+python3 img-mov-srv.py [ basedir ]
