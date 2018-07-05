@@ -21,18 +21,20 @@ rx = re.compile( r'\.(jpg|png)' )
 images = {}
 # generate dictionary for images
 for i in filter(rx.search, os.listdir(basedir)):
-    images[i[:i.index('.')]] = i
+    images[int(i[:i.index('.')])] = i
 
 rx = re.compile( r'\.(mp4|3gp|mov)' )
 movies = {}
 # generate dictionary for movies
 for i in filter(rx.search, os.listdir(basedir)):
-    movies[i[:i.index('.')]] = i
+    movies[int(i[:i.index('.')])] = i
 
 print( "images found: {}".format( images ))
 print( "movies found: {}".format( movies ))
 
 def term_running():
+    global player
+    global fim
     if player is not None:
         player.quit()
         player = None
