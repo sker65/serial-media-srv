@@ -45,3 +45,7 @@ in config.txt add 'enable_uart=1'
 systemctl stop serial-getty@ttyS0
 
 systemctl disable serial-getty@ttyS0
+
+#start
+
+python3 img-mov-srv.py [ <basedir> ]
