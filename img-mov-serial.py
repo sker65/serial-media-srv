@@ -7,23 +7,27 @@ import sys
 from pathlib import Path
 from omxplayer.player import OMXPlayer
 
-port = serial.Serial("/dev/ttyS0", baudrate=115200, timeout=10003.0)
+basedir = '.'
+if len(sys.argv) > 1:
+    basedir = sys.argv[1]
+
+serial_device = '/dev/ttyS0'
+if len(sys.argv) > 2:
+    serial_device = sys.argv[2]
+
+port = serial.Serial(serial_device, baudrate=57600, timeout=10003.0)
 # reference to omx player
 player = None
 # reference to fim image player
 fim = None
 
-basedir = '.'
-if len(sys.argv) > 1:
-    basedir = sys.argv[1]
-
-rx = re.compile( r'\.(jpg|png)' )
+rx = re.compile( r'\.(jpg|png)$' )
 images = {}
 # generate dictionary for images
 for i in filter(rx.search, os.listdir(basedir)):
     images[int(i[:i.index('.')])] = i
 
-rx = re.compile( r'\.(mp4|3gp|mov)' )
+rx = re.compile( r'\.(mp4|3gp|mov|avi)$' )
 movies = {}
 # generate dictionary for movies
 for i in filter(rx.search, os.listdir(basedir)):
