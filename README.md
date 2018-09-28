@@ -3,6 +3,26 @@ a media server that plays movies or images controlled by serial cmds.
 
 This server could be used in various devices to playback movies or images based on the received serial commands.
 
+# running
+
+There's a start script provided start.sh and a service definition for systemd as well (serial-media.service).
+To install the service copy serial-media.service to /etc/systemd/system adjust installation path and start/enable the service by systemctl start/enable serial-media
+
+# config
+
+The service recognizes movies (mp4, 3gp, mov or avi) or images (jpg or png) in its working directory and will show / play it when it receives a two byte serial
+command. The command is simply translated into a number which should match the file name. So if you send 02 03 over serial line it will play 2*256 + 3 = 515.avi
+
+Besides the "numbered" media files it recognizes default images or movies by filenames starting with "default". If there is more than one it will be randomly picked
+and played, if there is nothing else to play / show (also on startup).
+
+# playback
+
+if a numbered movie is still playing, while the same number is received again, it will be ignored. After movie finished the default images will be shown / default
+movie will be played.
+
+so far there is no slideshow or looping implemented.
+
 # install on raspbian
 
 Base image is raspian lite stretch. Then run / install the following commands ...
