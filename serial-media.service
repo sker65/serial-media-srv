@@ -1,0 +1,11 @@
+[Unit]
+Description=Serial Media Service
+
+[Service]
+ExecStartPre=/bin/sleep 10
+ExecStart=/home/pi/serial-media-srv/start.sh
+WorkingDirectory=/home/pi/serial-media-srv
+Type=idle
+
+[Install]
+WantedBy=multi-user.target
