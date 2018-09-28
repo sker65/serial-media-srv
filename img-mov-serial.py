@@ -20,11 +20,18 @@ import sys
 import random
 import signal
 import datetime
+from shutil import copyfile
 
 from pathlib import Path
 from omxplayer.player import OMXPlayer
 
-version = '1.0.1'
+# refresh start.sh itself if necessary
+newStart = Path("./new-start.sh")
+if newStart.is_file():
+    copyfile("./new-start.sh", "./start.sh")
+    newStart.unlink()
+
+version = '1.0.2'
 
 basedir = '.'
 if len(sys.argv) > 1:
