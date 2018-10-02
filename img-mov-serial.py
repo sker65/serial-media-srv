@@ -15,15 +15,26 @@
 import os
 import re
 import serial
-import subprocess
+from subprocess import Popen
+from subprocess import PIPE
 import sys
 import random
 import signal
 import datetime
+import threading
 from shutil import copyfile
+import configparser
+import logging
 
 from pathlib import Path
-from omxplayer.player import OMXPlayer
+#from omxplayer.player import OMXPlayer
+
+config = configparser.ConfigParser()
+config['player']={}
+config.read('serial-media-srv.ini')
+
+logging.basicConfig(stream=sys.stdout, level=logging.DEBUG, format='%(asctime)s %(levelname)s %(message)s')
+log = logging.getLogger('serial-media-server')
 
 # refresh start.sh itself if necessary
 newStart = Path("./new-start.sh")
@@ -42,17 +53,18 @@ if len(sys.argv) > 2:
     serial_device = sys.argv[2]
 
 def signal_handler(sig, frame):
-	print( "Ctrl-C pressed. Terminating running players and exit")
-	term_running()
-	sys.exit(0)
+    global log
+    log.info( "Ctrl-C pressed. Terminating running players and exit")
+    term_running()
+    sys.exit(0)
 
 signal.signal(signal.SIGINT, signal_handler)
 
-print( "serial-media-srv version {} starting {} ...".format(version, datetime.datetime.now()))
+log.info( "serial-media-srv version {} starting ...".format(version ))
 
-port = serial.Serial(serial_device, baudrate=57600, timeout=10003.0)
+port = serial.Serial(serial_device, baudrate=57600, timeout=1000000)
 
-print( "serial port {} initilized".format(serial_device))
+log.info( "serial port {} initilized".format(serial_device))
 
 # reference to omx player
 player = None
@@ -87,43 +99,69 @@ for i in filter(rx.search, os.listdir(basedir)):
     defaultmovies[k] = i
     k += 1
 
-print( "images found: {}".format( images ))
-print( "movies found: {}".format( movies ))
-print( "defaultimages found: {}".format( defaultimages ))
-print( "defaultmovies found: {}".format( defaultmovies ))
+log.info( "images found: {}".format( images ))
+log.info( "movies found: {}".format( movies ))
+log.info( "defaultimages found: {}".format( defaultimages ))
+log.info( "defaultmovies found: {}".format( defaultmovies ))
 movie_playing = 0
 
+def onProcessExit(proc):
+    log.info("player process {} exited".format(proc.pid))
+    movie_ended()
+
+def popenAndCall(onExit, *popenArgs, **popenKWArgs):
+    proc = Popen(*popenArgs, **popenKWArgs)
+    def runInThread(onExit, proc):
+        proc.wait()
+        onExit(proc)
+        return
+    thread = threading.Thread(target=runInThread, args=(onExit, proc))
+    thread.start()
+    return proc # returns immediately after the thread starts
+
 def term_running():
-    global player
-    global fim
+    global player,fim
     if player is not None:
-        player.quit()
+        log.debug("ending player process {}".format(player.pid))
+        try:
+            outs, errs = player.communicate(input="q".encode('utf-8'),timeout=1)
+        except TimeoutExpired:
+            player.kill()
+        player.send_signal(signal.SIGINT)
         player = None
     if fim is not None:
-        fim.terminate()
+        fim.send_signal(signal.SIGINT)
+        fim.kill()
         fim = None
     return
 
 def movie_ended():
-    global movie_playing
+    global movie_playing, log, player
+    log.debug( "movie {} ended".format(movie_playing))
     movie_playing = 0
+    player = None
     check_for_defaults()
 
 def play_movie(id, m):
-    global player, movie_playing
-    print( "playing movie {}".format(m[id]))
+    global player, movie_playing, config, log
+    log.debug( "playing movie {}".format(m[id]))
     movie_playing = id
-    player = OMXPlayer( Path(m[id]) )
-    player.stopEvent += lambda _: movie_ended()
+    if player is not None: player.kill()
+    player = popenAndCall(onProcessExit, ['omxplayer', '-b', Path(m[id]).absolute().as_posix() ], stdin=PIPE, stdout=PIPE, shell=False )
+    #player = Popen(['omxplayer', '-b', Path(m[id]).absolute().as_posix() ], stdin=PIPE, stdout=PIPE, shell=False  )
+    #player.set_aspect_mode(config['player'].get('aspectMode','stretch'))
+    #player.stopEvent += lambda _: movie_ended()
 
 def show_image(id, m):
-    global fim
-    print( "showing image {}".format(m[id]))
-    fim = subprocess.Popen("fim -a -q " + m[id], shell = True)
+    global fim, log
+    log.debug( "showing image {}".format(m[id]))
+    fim = Popen(['fim', '-a', '-q', m[id] ], stdin=PIPE, stdout=PIPE, shell = False)
+    #fim = Popen(['fbi', '-a', '-d', '/dev/fb0', '-noverbose', m[id] ], stdin=PIPE, stdout=PIPE, shell = False)
+    #outs, errs = fim.communicate(input="j".encode('utf-8'),timeout=1)
+    log.debug( "started fbi process {}".format(fim.pid))
 
 def check_for_defaults():
-    global defaultmovies
-    global defaultimages
+    global defaultmovies, defaultimages
     if len(defaultmovies) > 0:
         id = random.randint(0,len(defaultmovies)-1)
         play_movie(id, defaultmovies)
@@ -131,15 +169,15 @@ def check_for_defaults():
         id = random.randint(0,len(defaultimages)-1)
         show_image(id, defaultimages)
 
-
 # main loop
 check_for_defaults()
 while True:
     device = port.read()
     event =  port.read()
-    if len(device)==0 or len(event)==0: continue
+    if len(device)==0 or len(event)==0:
+        continue
     id = ord(device) * 256 + ord(event)
-    print( "Event received: {}:{} = {}". format(device,event,id) )
+    log.debug( "Event received: {}:{} = {}". format(device,event,id) )
     #exit()
     if id == 0:
         term_running()
