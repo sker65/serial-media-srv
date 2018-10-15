@@ -16,6 +16,7 @@ import os
 import re
 import serial
 from subprocess import Popen
+from subprocess import TimeoutExpired
 from subprocess import PIPE
 import sys
 import random
@@ -42,7 +43,7 @@ if newStart.is_file():
     copyfile("./new-start.sh", "./start.sh")
     newStart.unlink()
 
-version = '1.0.2'
+version = '1.0.3'
 
 basedir = '.'
 if len(sys.argv) > 1:
@@ -65,11 +66,6 @@ log.info( "serial-media-srv version {} starting ...".format(version ))
 port = serial.Serial(serial_device, baudrate=57600, timeout=1000000)
 
 log.info( "serial port {} initilized".format(serial_device))
-
-# reference to omx player
-player = None
-# reference to fim image player
-fim = None
 
 rx = re.compile( r'[0-9]+\.(jpg|png)$' )
 images = {}
@@ -104,58 +100,67 @@ log.info( "movies found: {}".format( movies ))
 log.info( "defaultimages found: {}".format( defaultimages ))
 log.info( "defaultmovies found: {}".format( defaultmovies ))
 movie_playing = 0
+processes = {}
+follow_task = 0
 
-def onProcessExit(proc):
-    log.info("player process {} exited".format(proc.pid))
-    movie_ended()
+class Task(object):
+    def __init__(self, type, id, proc):
+        self.type = type
+        self.proc = proc
+        self.playing = id
 
-def popenAndCall(onExit, *popenArgs, **popenKWArgs):
+def onProcessExit(task):
+    global processes
+    log.info("player process {} playing {} exited".format(task.proc.pid, task.playing))
+    del processes[task.proc.pid]
+    if len(processes) == 0 and follow_task == 0: check_for_defaults()
+
+def onFimProcessExit(task):
+    global processes
+    log.info("fim process {} showing {} exited".format(task.proc.pid, task.playing))
+    del processes[task.proc.pid]
+
+def popenAndCall(onExit, type, id, *popenArgs, **popenKWArgs):
+    global processes
     proc = Popen(*popenArgs, **popenKWArgs)
+    task = Task(type,id,proc)
     def runInThread(onExit, proc):
         proc.wait()
-        onExit(proc)
+        onExit(task)
         return
     thread = threading.Thread(target=runInThread, args=(onExit, proc))
+    processes[proc.pid] = task
     thread.start()
     return proc # returns immediately after the thread starts
 
 def term_running():
-    global player,fim
-    if player is not None:
-        log.debug("ending player process {}".format(player.pid))
-        try:
-            outs, errs = player.communicate(input="q".encode('utf-8'),timeout=1)
-        except TimeoutExpired:
-            player.kill()
-        player.send_signal(signal.SIGINT)
-        player = None
-    if fim is not None:
-        fim.send_signal(signal.SIGINT)
-        fim.kill()
-        fim = None
-    return
-
-def movie_ended():
-    global movie_playing, log, player
-    log.debug( "movie {} ended".format(movie_playing))
-    movie_playing = 0
-    player = None
-    check_for_defaults()
+    global processes
+    for pid in list(processes):
+        task = processes[pid]
+        log.debug("ending task {}".format(pid))
+        if task.type == 1:
+            try:
+                outs, errs = task.proc.communicate(input="q".encode('utf-8'),timeout=1)
+            except TimeoutExpired:
+                task.proc.kill()
+            if task.proc is not None: task.proc.send_signal(signal.SIGINT)
+        if task.type == 2:
+            task.proc.send_signal(signal.SIGINT)
+            task.proc.kill()
 
 def play_movie(id, m):
-    global player, movie_playing, config, log
-    log.debug( "playing movie {}".format(m[id]))
+    global movie_playing, config, log
     movie_playing = id
-    if player is not None: player.kill()
-    player = popenAndCall(onProcessExit, ['omxplayer', '-b', Path(m[id]).absolute().as_posix() ], stdin=PIPE, stdout=PIPE, shell=False )
+    player = popenAndCall(onProcessExit, 1, id, ['omxplayer', '-b', Path(m[id]).absolute().as_posix() ], stdin=PIPE, stdout=PIPE, shell=False )
     #player = Popen(['omxplayer', '-b', Path(m[id]).absolute().as_posix() ], stdin=PIPE, stdout=PIPE, shell=False  )
+    log.debug( "playing movie {} in process {}".format(m[id],player.pid))
     #player.set_aspect_mode(config['player'].get('aspectMode','stretch'))
     #player.stopEvent += lambda _: movie_ended()
 
 def show_image(id, m):
-    global fim, log
+    global log
     log.debug( "showing image {}".format(m[id]))
-    fim = Popen(['fim', '-a', '-q', m[id] ], stdin=PIPE, stdout=PIPE, shell = False)
+    fim = popenAndCall(onFimProcessExit, 2, id, ['fim', '-a', '-q', m[id] ], stdin=PIPE, stdout=PIPE, shell = False)
     #fim = Popen(['fbi', '-a', '-d', '/dev/fb0', '-noverbose', m[id] ], stdin=PIPE, stdout=PIPE, shell = False)
     #outs, errs = fim.communicate(input="j".encode('utf-8'),timeout=1)
     log.debug( "started fbi process {}".format(fim.pid))
@@ -169,9 +174,11 @@ def check_for_defaults():
         id = random.randint(0,len(defaultimages)-1)
         show_image(id, defaultimages)
 
+
 # main loop
 check_for_defaults()
 while True:
+    follow_task = 0
     device = port.read()
     event =  port.read()
     if len(device)==0 or len(event)==0:
@@ -187,5 +194,6 @@ while True:
         term_running()
         show_image(id, images)
     if id in movies and movie_playing != id:
+        follow_task = 1
         term_running()
         play_movie(id, movies)
