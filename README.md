@@ -10,16 +10,32 @@ To install the service copy serial-media.service to /etc/systemd/system adjust i
 
 # config
 
-The service recognizes movies (mp4, 3gp, mov or avi) or images (jpg or png) in its working directory and will show / play it when it receives a two byte serial
-command. The command is simply translated into a number which should match the file name. So if you send 02 03 over serial line it will play 2*256 + 3 = 515.avi
+The service reads a config file (ini file) from the current directory by default (serial-media-srv.ini). It consists of sections see example. There a builtin defaults for showing images and also for playing movies that rely on omxplayer / fim.
 
-Besides the "numbered" media files it recognizes default images or movies by filenames starting with "default". If there is more than one it will be randomly picked and played, if there is nothing else to play / show (also on startup).
+# commands
 
-# playback
+Ther service reads commands from the serial port (or other input) just as one line. Commands are always uppercase and can have arguments.
 
-if a numbered movie is still playing, while the same number is received again, it will be ignored. After movie finished the default images will be shown / default movie will be played.
+## play command
 
-so far there is no slideshow or looping implemented.
+```PLAY <media>``` 
+
+plays / shows a media file (image / movie)
+
+## stop command
+
+```STOP```
+
+stop any running media, go back to a default (if defined)
+
+## playoneof command
+
+```PLAYONEOF <media1> <media2> <media3> ```
+
+plays one of the media files, chooses randomly
+
+# movie playback
+if a movie is playing the server remembers its name, so if the same movie is requested twice, the movie just plays on (no rewind or interruption)
 
 # install on raspbian
 
