@@ -13,13 +13,11 @@ To install the service copy serial-media.service to /etc/systemd/system adjust i
 The service recognizes movies (mp4, 3gp, mov or avi) or images (jpg or png) in its working directory and will show / play it when it receives a two byte serial
 command. The command is simply translated into a number which should match the file name. So if you send 02 03 over serial line it will play 2*256 + 3 = 515.avi
 
-Besides the "numbered" media files it recognizes default images or movies by filenames starting with "default". If there is more than one it will be randomly picked
-and played, if there is nothing else to play / show (also on startup).
+Besides the "numbered" media files it recognizes default images or movies by filenames starting with "default". If there is more than one it will be randomly picked and played, if there is nothing else to play / show (also on startup).
 
 # playback
 
-if a numbered movie is still playing, while the same number is received again, it will be ignored. After movie finished the default images will be shown / default
-movie will be played.
+if a numbered movie is still playing, while the same number is received again, it will be ignored. After movie finished the default images will be shown / default movie will be played.
 
 so far there is no slideshow or looping implemented.
 
@@ -59,6 +57,12 @@ in config.txt add 'enable_uart=1'
 systemctl stop serial-getty@ttyS0
 systemctl disable serial-getty@ttyS0
 ```
+
+# image
+
+There is also an image available based on raspbian stretch lite the could be written on a 16GB sd card using some imager tool
+like Win32 Disk Imager or etcher. The image is even more customized as all startup messages on the screen are removed and a nice
+start animation is shown instead. You can get the image here: https://go-dmd.de/produkt/serial-media-server-image/
 
 # start
 
