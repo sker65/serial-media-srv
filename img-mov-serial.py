@@ -100,6 +100,8 @@ for i in filter(rx.search, os.listdir(basedir)):
     defaultimages[k] = i
     k += 1
 
+movies = {}
+
 # generate dictionary for defaultmovie
 rx = re.compile( r'default.*\.(mp4|3gp|mov|avi)$' )
 defaultmovies = {}
