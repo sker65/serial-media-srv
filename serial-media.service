@@ -6,6 +6,7 @@ ExecStartPre=/bin/sleep 10
 ExecStart=/home/pi/serial-media-srv/start.sh
 WorkingDirectory=/home/pi/serial-media-srv
 Type=idle
+Restart=always
 
 [Install]
 WantedBy=multi-user.target
