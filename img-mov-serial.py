@@ -242,6 +242,8 @@ def handleCmd( tokens ):
             play_movie(movie)
         else:
             log.info("same movie already playing ({})".format(movie_playing))
+    else:
+        log.error("unknown command" )
 
 
 def readNextLine():
