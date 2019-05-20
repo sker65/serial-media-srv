@@ -15,6 +15,7 @@
 import os
 import re
 import serial
+import socket
 from subprocess import Popen
 from subprocess import TimeoutExpired
 from subprocess import PIPE
@@ -72,19 +73,27 @@ def signal_handler(sig, frame):
     sys.exit(0)
 
 signal.signal(signal.SIGINT, signal_handler)
-readFromFile = ''
+file = None
+connection = None
+port = None
 
 log.info( "serial-media-srv version {} starting ...".format(version ))
-if config.has_option('general', 'readFrom'):
-    readFromFile = config['general']['readFrom']
 
 baud=int(config['general']['baud'])
 
-if len(readFromFile)==0:
-    port = serial.Serial(serial_device, baudrate=baud, timeout=int(config['general']['timeout']))
-    log.info( "serial port {} initilized with {}".format(serial_device, baud))
+if config.has_option('general', 'socketport'):
+    connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    connection.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sport=int( config['general']['socketport'])
+    connection.bind(('0.0.0.0', sport))
+    log.debug("listening for cmd on {}".format(sport))
+    connection.listen(10)
+elif config.has_option('general', 'readFrom'):
+    file = open( config['general']['readFrom'], "r")
+    log.debug("reading from file {}".format(config['general']['readFrom']))
 else:
-    file = open( readFromFile, "r")
+    port = serial.Serial(serial_device, baudrate=baud, timeout=int(config['general']['timeout']))
+    log.info( "serial port {} initilized with {}".format(serial_device, baud))   
 
 rx = re.compile( r'[0-9]+\.(jpg|png)$' )
 images = {}
@@ -164,16 +173,19 @@ def term_running():
             task.proc.kill()
 
 def play_movie(name):
-    global movie_playing, config, log
+    global movie_playing, config, log, current_connection
+    media = Path(name).absolute()
     movie_playing = name
     args = config['player']['exec'].split()
-    args.append( Path(name).absolute().as_posix() )
+    args.append( media.as_posix() )
     log.debug("running: {}".format(args))
     player = popenAndCall(onProcessExit, 1, name, args, stdin=PIPE, stdout=PIPE, shell=False )
     #player = Popen(['omxplayer', '-b', Path(m[id]).absolute().as_posix() ], stdin=PIPE, stdout=PIPE, shell=False  )
     log.debug( "playing movie {} in process {}".format(name,player.pid))
     #player.set_aspect_mode(config['player'].get('aspectMode','stretch'))
     #player.stopEvent += lambda _: movie_ended()
+    if current_connection:
+        current_connection.send("# playing {}\r\n".format(name).encode(charset))
 
 def show_image(name):
     global log
@@ -183,12 +195,14 @@ def show_image(name):
     log.debug("running: {}".format(args))
     fim = popenAndCall(onFimProcessExit, 2, name, args, stdin=PIPE, stdout=PIPE, shell = False)
     log.debug( "started fbi process {}".format(fim.pid))
+    if current_connection:
+        current_connection.send("# playing {}\r\n".format(name).encode(charset))
 
-def run_slideshow(path_pattern):
+def run_slideshow(name):
     global log
-    log.debug("running slideshow '{}'".format(path_pattern))
+    log.debug("running slideshow '{}'".format(name))
     args = config['slide']['exec'].split()
-    args.append( path_pattern )
+    args.append( name )
     log.debug("running: {}".format(args))
     fim = popenAndCall(onFimProcessExit, 2, name, args, stdin=PIPE, stdout=PIPE, shell = False)
     log.debug( "playing slide {} in process {}".format(name,player.pid))
@@ -205,23 +219,29 @@ def check_for_defaults():
 
 def handleCmd( tokens ):
     global follow_task, log
-    cmd = tokens[0]
-    log.debug("handling cmd '{}' ntok {}".format(cmd,len(tokens)))
+    cmd = tokens[0].upper()
+    log.debug("handling cmd '{}' args {}".format(cmd,tokens[1:]))
     if cmd == 'STOP':
         term_running()
         # not necessary on exit handler does it //check_for_defaults()
     elif cmd == 'PLAY' and len(tokens) > 1:
         media = tokens[1]
-        if media.endswith('.png') or media.endswith('.jpg'):
-            term_running()
-            show_image(media)
-        else:
-            if movie_playing != media:
-                follow_task = 1
-                term_running()
-                play_movie(media)
+        if Path(media).is_file():
+            if media.endswith('.png') or media.endswith('.jpg'):
+                    term_running()
+                    show_image(media)
             else:
-                log.info("same movie already playing ({})".format(movie_playing))
+                if movie_playing != media:
+                    follow_task = 1
+                    term_running()
+                    play_movie(media)
+                else:
+                    log.info("same movie already playing ({})".format(movie_playing))
+        else:
+            log.error("media not found '{}'".format(media))
+            if current_connection:
+                current_connection.send("# media not found '{}'\r\n".format(media).encode(charset))
+
     elif cmd == 'SLEEP' and len(tokens) > 1:
         sleep( int(tokens[1]) )
     elif cmd == 'SLIDE' and len(tokens) > 1:
@@ -241,28 +261,48 @@ def handleCmd( tokens ):
     else:
         log.error("unknown command" )
 
+current_connection = None
+charset = 'ISO-8859-1'
 
 def readNextLine():
-    global readFromFile, file
-    if not readFromFile:
-        r = port.readline().strip().decode('ISO-8859-1')
+    global port, file, current_connection
+    if connection:
+        r = current_connection.recv(2048)
+        if not r:
+            current_connection = None
+            return None
+        r = r.strip().decode(charset)
         log.debug("got line '{}'".format(r))
         return r
-    else:
+    elif port:
+        r = port.readline().strip().decode(charset)
+        log.debug("got line '{}'".format(r))
+        return r
+    elif file:
         r = file.readline()
         return r
+    else:
+        log.error("No input device")
 
 # main loop
 check_for_defaults()
 while True:
-    follow_task = 0
-    line = readNextLine()
-    if len(line) == 0:
-        continue
-    tokens = line.split()
-    if len(tokens) == 0:
-        continue
-    try:
-        handleCmd( tokens )
-    except:
-        continue
+    if connection:
+        log.debug("waiting for connection")
+        current_connection, address = connection.accept()
+        log.debug("client connected from {}".format(address))
+        current_connection.send("# serial-media-server {}\r\n".format(version).encode(charset))
+    while True:
+        follow_task = 0
+        line = readNextLine()
+        if not line:
+            break
+        if len(line) == 0:
+            continue
+        tokens = line.split()
+        if len(tokens) == 0:
+            continue
+        try:
+            handleCmd( tokens )
+        except:
+            continue
