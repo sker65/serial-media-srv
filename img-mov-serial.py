@@ -100,12 +100,6 @@ for i in filter(rx.search, os.listdir(basedir)):
     defaultimages[k] = i
     k += 1
 
-rx = re.compile( r'[0-9]+\.(mp4|3gp|mov|avi)$' )
-movies = {}
-# generate dictionary for movies
-for i in filter(rx.search, os.listdir(basedir)):
-    movies[int(i[:i.index('.')])] = i
-
 # generate dictionary for defaultmovie
 rx = re.compile( r'default.*\.(mp4|3gp|mov|avi)$' )
 defaultmovies = {}
@@ -219,7 +213,7 @@ def handleCmd( tokens ):
         if media.endswith('.png') or media.endswith('.jpg'):
             term_running()
             show_image(media)
-        else: 
+        else:
             if movie_playing != media:
                 follow_task = 1
                 term_running()
@@ -269,4 +263,4 @@ while True:
     try:
         handleCmd( tokens )
     except:
-        continue    
+        continue
