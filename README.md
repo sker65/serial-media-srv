@@ -39,24 +39,27 @@ if a movie is playing the server remembers its name, so if the same movie is req
 
 # install on raspbian
 
-Base image is raspian lite stretch. Then run / install the following commands ...
+Base image is raspian lite stretch or dietpi. Then run / install the following commands ...
 
 ```
+Beginning with version 1.0.4 the serial media server is no longer using yamuplay or omxplayer python extension (didn't work).
+There is also an image available to make the setup even easier, see here https://go-dmd.de/produkt/serial-media-server-image/
+
 apt-get update
 apt-get install omxplayer
 apt-get install fbset
 apt-get install fbi
 apt-get install fim
 apt-get install python3-setuptools
-apt-get install python3-dbus
+// apt-get install python3-dbus
 apt-get install python3-pip
 
-python3 -m pip install decorator
-python3 -m pip install evento
+// python3 -m pip install decorator
+// python3 -m pip install evento
 python3 -m pip install pyserial
 
-apt-get install git
-git clone https://github.com/schlizbaeda/yamuplay.git
+// apt-get install git
+// git clone https://github.com/schlizbaeda/yamuplay.git
 ```
 
 ## in omxplayer directory
