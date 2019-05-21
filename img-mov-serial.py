@@ -16,6 +16,10 @@ import os
 import re
 import serial
 import socket
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import urlparse
+from urllib.parse import parse_qs
+import mimetypes
 from subprocess import Popen
 from subprocess import TimeoutExpired
 from subprocess import PIPE
@@ -56,9 +60,16 @@ if newStart.is_file():
     copyfile("./new-start.sh", "./start.sh")
     newStart.unlink()
 
-version = '1.0.4'
+version = '1.0.5'
+httpd = None
+file = None
+port = None
+connection = None
+current_connection = None
 
 basedir = '.'
+shouldRun = True
+
 if len(sys.argv) > 1:
     basedir = sys.argv[1]
 
@@ -66,16 +77,27 @@ serial_device = config['general']['device']
 if len(sys.argv) > 2:
     serial_device = sys.argv[2]
 
-def signal_handler(sig, frame):
-    global log
-    log.info( "Ctrl-C pressed. Terminating running players and exit")
+def term_and_exit():
+    global log, httpd, shouldRun
+    shouldRun = False
+    log.info( "Terminating running players and exit")
     term_running()
+    if current_connection:
+        current_connection.close()
+    if connection:
+        connection.close()
+    if port:
+        port.close()
+    if httpd:
+        httpd.shutdown()
     sys.exit(0)
 
+def signal_handler(sig, frame):
+    global log
+    log.info( "Ctrl-C pressed.")
+    term_and_exit()
+
 signal.signal(signal.SIGINT, signal_handler)
-file = None
-connection = None
-port = None
 
 log.info( "serial-media-srv version {} starting ...".format(version ))
 
@@ -224,6 +246,7 @@ def handleCmd( tokens ):
     if cmd == 'STOP':
         term_running()
         # not necessary on exit handler does it //check_for_defaults()
+        return 0
     elif cmd == 'PLAY' and len(tokens) > 1:
         media = tokens[1]
         if Path(media).is_file():
@@ -237,13 +260,16 @@ def handleCmd( tokens ):
                     play_movie(media)
                 else:
                     log.info("same movie already playing ({})".format(movie_playing))
+            return 0
         else:
             log.error("media not found '{}'".format(media))
             if current_connection:
                 current_connection.send("# media not found '{}'\r\n".format(media).encode(charset))
+            return 1
 
     elif cmd == 'SLEEP' and len(tokens) > 1:
         sleep( int(tokens[1]) )
+        return 0
     elif cmd == 'SLIDE' and len(tokens) > 1:
         term_running()
         run_slideshow( tokens[1] )
@@ -252,16 +278,121 @@ def handleCmd( tokens ):
         # choose one
         i = random.randint(0,len(media)-1)
         movie = media[i]
-        if movie != movie_playing:
-            follow_task = 1
-            term_running()
-            play_movie(movie)
+        if Path(movie).is_file():       
+            if movie != movie_playing:
+                follow_task = 1
+                term_running()
+                play_movie(movie)
+            else:
+                log.info("same movie already playing ({})".format(movie_playing))
+            return 0
         else:
-            log.info("same movie already playing ({})".format(movie_playing))
+            log.error("media not found '{}'".format(movie))
+            return 1
     else:
         log.error("unknown command" )
+        return 2
 
-current_connection = None
+def term_with_delay():
+    sleep(5)
+    term_and_exit()
+
+# HTTPRequestHandler class
+class testHTTPServer_RequestHandler(BaseHTTPRequestHandler):
+    global version,log
+
+    def log_message(self, format, *args):
+        log.info("http access - %s - - [%s] %s" %
+                        (self.client_address[0],
+                        self.log_date_time_string(),
+                        format%args))
+
+    def sendJsonResponse( self, message ):
+        self.send_response(200)
+        self.send_header('Content-type','application/json')
+        self.end_headers()
+        self.wfile.write(bytes(message, "utf8"))
+        return
+
+    def sendFile(self, realpath):
+        addEncodingHeader = False
+        try:
+            filepath = realpath
+            if os.path.isfile(realpath+'.gz'):
+                filepath = realpath + '.gz'
+                addEncodingHeader = True
+            # print ( realpath )
+            f = open(filepath, "rb")
+
+        except IOError:
+            self.send_error(404,'File Not Found: %s ' % realpath)
+
+        else:
+            self.send_response(200)
+            #this part handles the mimetypes for you.
+            mimetype, _ = mimetypes.guess_type(realpath)
+            self.send_header('Content-Type', mimetype)
+            if addEncodingHeader:
+                self.send_header('Content-Encoding', 'gzip')
+            self.end_headers()
+            for s in f:
+                self.wfile.write(s)
+            return
+
+    # GET
+    def do_GET(self):
+        url = urlparse(self.path)
+        if url.path == '/restart':
+            thread = threading.Thread(target=term_with_delay)
+            thread.start()
+            self.sendJsonResponse('{ "result": "success", "message": "server is restaring. Hold on" }' )
+            return
+
+        if url.path == '/log':
+            realpath = os.path.join('.', 'serial.log')
+            self.sendFile(realpath)
+            return
+        if url.path == '/version':
+            self.sendJsonResponse('{ "version": "%s" }' % (version))
+            return
+        if url.path == '/cmd':
+            qs = parse_qs( url.query )
+            if 'c' in qs:
+                cmd = qs['c'][0]
+                try:
+                    r = handleCmd(cmd.split())
+                except:
+                    log.error("Oops! "+sys.exc_info()[0]+" occured.")
+                
+                if r == 0:
+                    self.sendJsonResponse('{ "result": "success", "message": "%s" }' % (cmd))
+                else:
+                    self.sendJsonResponse('{ "result": "error", "message": "code %d" }' % (r))
+            else:
+                self.sendJsonResponse('{ "result": "error", "message": "code %d" }' % (3))
+            return
+
+        if self.path in ("", "/"):
+            filepath = "index.html"
+        else:
+            filepath = self.path.lstrip("/")
+        realpath = os.path.join('./html', filepath)
+        self.sendFile(realpath)
+
+def run_httpservice():
+    global httpd, log, config
+    log.debug('starting http server...')
+    httpport=int(config['general']['httpport'])
+    # Server settings
+    server_address = ('', httpport)
+    httpd = HTTPServer(server_address, testHTTPServer_RequestHandler)
+    log.debug("running http server on port {} ...".format(httpport))
+    httpd.serve_forever()
+
+if config.has_option('general', 'httpport'):
+    thread = threading.Thread(target=run_httpservice)
+    thread.start()
+
 charset = 'ISO-8859-1'
 
 def readNextLine():
@@ -286,13 +417,13 @@ def readNextLine():
 
 # main loop
 check_for_defaults()
-while True:
+while shouldRun:
     if connection:
         log.debug("waiting for connection")
         current_connection, address = connection.accept()
         log.debug("client connected from {}".format(address))
         current_connection.send("# serial-media-server {}\r\n".format(version).encode(charset))
-    while True:
+    while shouldRun:
         follow_task = 0
         line = readNextLine()
         if not line:
@@ -305,4 +436,5 @@ while True:
         try:
             handleCmd( tokens )
         except:
+            log.error("Oops! "+sys.exc_info()[0]+" occured.")
             continue

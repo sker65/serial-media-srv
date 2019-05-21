@@ -1,0 +1,163 @@
+<html>
+    <head>
+        <title>Serial Media Server</title>
+        <link rel="stylesheet" href="/css/css-mint.min.css">
+        <script type="text/javascript" src="js/jquery-3.4.1.min.js"></script>
+    </head>
+    <body>
+        <style>
+/* The snackbar - position it at the bottom and in the middle of the screen */
+#snackbar {
+  visibility: hidden; /* Hidden by default. Visible on click */
+  min-width: 250px; /* Set a default minimum width */
+  margin-left: -125px; /* Divide value of min-width by 2 */
+  background-color: #333; /* Black background color */
+  color: #fff; /* White text color */
+  text-align: center; /* Centered text */
+  border-radius: 4px; /* Rounded borders */
+  padding: 16px; /* Padding */
+  position: fixed; /* Sit on top of the screen */
+  z-index: 1; /* Add a z-index if needed */
+  left: 50%; /* Center the snackbar */
+  bottom: 30px; /* 30px from the bottom */
+}
+
+/* Show the snackbar when clicking on a button (class added with JavaScript) */
+#snackbar.show {
+  visibility: visible; /* Show the snackbar */
+  /* Add animation: Take 0.5 seconds to fade in and out the snackbar.
+  However, delay the fade out process for 2.5 seconds */
+  -webkit-animation: fadein 0.5s, fadeout 0.5s 2.5s;
+  animation: fadein 0.5s, fadeout 0.5s 2.5s;
+}
+/* Animations to fade the snackbar in and out */
+@-webkit-keyframes fadein {
+  from {bottom: 0; opacity: 0;}
+  to {bottom: 30px; opacity: 1;}
+}
+
+@keyframes fadein {
+  from {bottom: 0; opacity: 0;}
+  to {bottom: 30px; opacity: 1;}
+}
+
+@-webkit-keyframes fadeout {
+  from {bottom: 30px; opacity: 1;}
+  to {bottom: 0; opacity: 0;}
+}
+
+@keyframes fadeout {
+  from {bottom: 30px; opacity: 1;}
+  to {bottom: 0; opacity: 0;}
+}
+</style>
+        <script type="text/javascript">
+            function doCmd( ) {
+                let cmd = $('#cmd').val();
+                console.log("doCmd( " + cmd + ")");
+                $.ajax({url: "/cmd?c="+encodeURIComponent(cmd), success: function(data){
+                    showMessage(data.message, data.result == 'success' ? 'green':'red');
+                }});
+            }
+            // show toast message at the bottom for 3 seconds
+            function showMessage(message, color) {
+                // Get the snackbar DIV
+                var x = document.getElementById("snackbar");
+                x.style.backgroundColor = color
+                x.innerHTML = message;
+                // Add the "show" class to DIV
+                x.className = "show";
+                // After 3 seconds, remove the show class from DIV
+                setTimeout(function(){ x.className = x.className.replace("show", ""); }, 3000); // 3 sec is also in css ani, so this is fixed
+            }
+            // global ajax error handler
+            $( document ).ajaxError( function( event, jqxhr, settings, thrownError ) {
+            if( settings.suppressErrors ) return;
+                showMessage('something went wrong', 'red');
+                console.log("ajax error "+ thrownError.message  );
+            });
+
+            $(document).ready(function(){
+                $.ajax({url: "/version", success: function(result){
+                    $("#version").html(result.version);
+                }});
+
+                $("#cmd").keyup(function(event) {
+                    if (event.keyCode === 13) {
+                        $("#cmdBtn").click();
+                    }
+                });
+                $('#restartBtn').click( function() {
+                    $.ajax({url: "/restart", success: function(data){
+                       showMessage(data.message, data.result == 'success' ? 'green':'red');
+                    }});
+                });
+            });
+        </script>
+        <section class="main-content">
+            <header class="cm-header primary">
+                    <div class="cm-logo cm-text-large">
+                    <a href="#">Serial Media Server</a>
+                    </div>
+                    <nav class="cm-nav">
+                    <ul>
+                        <li>
+                            <a target="_blank" href="https://go-dmd.de/changelog/">Version <span id="version">.</span></a>
+                        </li>
+                    </ul>
+                    </nav>
+            </header>
+            <div class="cm-grid">
+                <div class="cm-row">
+                    <div class="cm-col-md-4">
+                        <div class="cm-card">
+                            <div class="cm-card-header">
+                                About
+                            </div>
+                            <div class="cm-card-body">
+                                Serial Media Server is a small dietpi / python3 based software / image that uses fim / omxplayer
+                                to display media from a raspberry pi. It can be used for remote controlled kiosk system like
+                                media server that has minmal resource requirements and minimal startup time.
+                            </div>
+                            <div class="cm-card-footer">
+                                (C) 2019 by S. Rinke
+                            </div>
+                        </div>
+                    </div>
+                    <div class="cm-col-md-5">
+                        <div class="cm-card">
+                            <div class="cm-card-header">
+                                Test Command
+                            </div>
+                            <div class="cm-card-body">
+                                    <input id="cmd" style="width: 20em;" type="text" placeholder="Enter test cmd" />
+                                    <button id="cmdBtn" class="cm-btn primary" onclick="doCmd();">Go</button>
+                                    <p>
+                                        Please enter a test command like 'STOP' or 'PLAY ...'
+                                    </p>
+                            </div>
+                            <div class="cm-card-footer">
+                                Command test utility
+                            </div>
+                        </div>
+                    </div>
+                    <div class="cm-col-md-3">
+                        <div class="cm-card">
+                            <div class="cm-card-header">
+                                Utility
+                            </div>
+                            <div class="cm-card-body">
+                                    <button id="openLog" class="cm-btn primary" onclick="window.open('/log', '_blank');">Open Log</button>
+                                    <button id="restartBtn" class="cm-btn secondary">Restart</button>
+                            </div>
+                            <div class="cm-card-footer">
+                                Show logs or restart the serial media service.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <div id="snackbar" >Some text some message..</div>
+    </body>
+</html>
