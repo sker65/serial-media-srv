@@ -42,6 +42,7 @@ config['general']={}
 config['general']['device']='/dev/ttyS0'
 config['general']['baud'] = '57600'
 config['general']['timeout'] = '100000'
+config['general']['httpport'] = '31009'
 config['player']={}
 config['player']['exec'] = 'omxplayer -b'
 config['viewer']={}
