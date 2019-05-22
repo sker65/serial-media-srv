@@ -68,6 +68,8 @@ port = None
 connection = None
 current_connection = None
 
+# where the python script is running
+mydir = os.path.dirname(os.path.realpath(__file__))
 basedir = '.'
 shouldRun = True
 
@@ -101,6 +103,7 @@ def signal_handler(sig, frame):
 signal.signal(signal.SIGINT, signal_handler)
 
 log.info( "serial-media-srv version {} starting ...".format(version ))
+log.debug("Running in %s" % mydir)
 
 baud=int(config['general']['baud'])
 
@@ -377,7 +380,7 @@ class testHTTPServer_RequestHandler(BaseHTTPRequestHandler):
             filepath = "index.html"
         else:
             filepath = self.path.lstrip("/")
-        realpath = os.path.join('./html', filepath)
+        realpath = os.path.join(mydir+'/html', filepath)
         self.sendFile(realpath)
 
 def run_httpservice():
