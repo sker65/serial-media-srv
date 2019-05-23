@@ -231,7 +231,7 @@ def run_slideshow(name):
     args.append( name )
     log.debug("running: {}".format(args))
     fim = popenAndCall(onFimProcessExit, 2, name, args, stdin=PIPE, stdout=PIPE, shell = False)
-    log.debug( "playing slide {} in process {}".format(name,player.pid))
+    log.debug( "playing slide {} in process {}".format(name,fim.pid))
 
 def check_for_defaults():
     global defaultmovies, defaultimages, movie_playing
