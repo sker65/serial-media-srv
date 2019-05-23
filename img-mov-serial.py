@@ -61,7 +61,7 @@ if newStart.is_file():
     copyfile("./new-start.sh", "./start.sh")
     newStart.unlink()
 
-version = '1.0.5'
+version = '1.0.6'
 httpd = None
 file = None
 port = None

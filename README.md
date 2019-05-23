@@ -37,14 +37,14 @@ plays one of the media files, chooses randomly
 # movie playback
 if a movie is playing the server remembers its name, so if the same movie is requested twice, the movie just plays on (no rewind or interruption)
 
-# install on raspbian
+# install on raspbian stretch / dietpi 
+
+Beginning with version 1.0.4 the serial media server is no longer using yamuplay or omxplayer python extension (didn't work).
+There is also an image available to make the setup even easier, see here https://go-dmd.de/produkt/serial-media-server-image/
 
 Base image is raspian lite stretch or dietpi. Then run / install the following commands ...
 
 ```
-Beginning with version 1.0.4 the serial media server is no longer using yamuplay or omxplayer python extension (didn't work).
-There is also an image available to make the setup even easier, see here https://go-dmd.de/produkt/serial-media-server-image/
-
 apt-get update
 apt-get install omxplayer
 apt-get install fbset
@@ -61,26 +61,42 @@ python3 -m pip install pyserial
 // apt-get install git
 // git clone https://github.com/schlizbaeda/yamuplay.git
 ```
+Take care to have enough GPU memory configured so that omxplayer can work
 
-## in omxplayer directory
+# usb stick support
+start script has usb stick support and dectects a mounted usb stick using media from there (requires usbmount installed)
 
-```
-python3 setup.py install
-usermod -a -G dialout,tty,video pi
-chmod g+r /dev/ttyS0
+# config file
+the server read an ini like config file either from sd card (/data) or usb stick. see example dir how it could look. There are defaults being used when no config file is avail. The example below has all the defaults set.
 
-in config.txt add 'enable_uart=1'
+```ini
+[general]
+# just for testing: read comamnds from a test file
+# readFrom=input.txt
+# uncomment to activate a simple text based socket interface, that accepts the same commands as over serial line
+# socketport=19999
+# change the http port for web ui
+httpport=31009
+# the serial device
+device=/dev/ttyS0
+# the baud rate
+baud=57600
+# timeout in sec for reading the serial port
+timeout=10
 
--> reboot
+[player]
+# command to use when playing videos
+exec=omxplayer -b --no-osd
 
-systemctl stop serial-getty@ttyS0
-systemctl disable serial-getty@ttyS0
+[viewer]
+# command to use when showing images
+exec=fim -a -q
 ```
 
 # image
 
 There is also an image available based on raspbian stretch lite the could be written on a 16GB sd card using some imager tool
-like Win32 Disk Imager or etcher. The image is even more customized as all startup messages on the screen are removed and a nice
+like Win32 Disk Imager or Etcher. The image is even more customized as all startup messages on the screen are removed and a nice
 start animation is shown instead. You can get the image here: https://go-dmd.de/produkt/serial-media-server-image/
 
 # start
