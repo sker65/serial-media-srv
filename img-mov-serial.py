@@ -41,10 +41,10 @@ config = configparser.ConfigParser()
 config['general']={}
 config['general']['device']='/dev/ttyS0'
 config['general']['baud'] = '57600'
-config['general']['timeout'] = '100000'
+config['general']['timeout'] = '10'
 config['general']['httpport'] = '31009'
 config['player']={}
-config['player']['exec'] = 'omxplayer -b'
+config['player']['exec'] = 'omxplayer -b --no-osd'
 config['viewer']={}
 config['viewer']['exec'] = 'fim -a -q'
 config['slide']={}
@@ -81,18 +81,23 @@ if len(sys.argv) > 2:
     serial_device = sys.argv[2]
 
 def term_and_exit():
-    global log, httpd, shouldRun
+    global log, httpd, port, shouldRun, current_connection, connection
     shouldRun = False
-    log.info( "Terminating running players and exit")
-    term_running()
     if current_connection:
+        log.info( "closing current connection")
         current_connection.close()
     if connection:
+        log.info( "closing listening port")
         connection.close()
     if port:
+        log.info( "closing serial port")
         port.close()
     if httpd:
+        log.info( "shutdown httpd")
         httpd.shutdown()
+    log.info( "Terminating running players and exit")
+    term_running()
+    log.info( "exiting ...")
     sys.exit(0)
 
 def signal_handler(sig, frame):
@@ -100,10 +105,12 @@ def signal_handler(sig, frame):
     log.info( "Ctrl-C pressed.")
     term_and_exit()
 
-signal.signal(signal.SIGINT, signal_handler)
 
 log.info( "serial-media-srv version {} starting ...".format(version ))
 log.debug("Running in %s" % mydir)
+
+#log.info( "Setting signal handler for Ctrl-C")
+#oldhandler = signal.signal(signal.SIGINT, signal_handler)
 
 baud=int(config['general']['baud'])
 
@@ -118,8 +125,9 @@ elif config.has_option('general', 'readFrom'):
     file = open( config['general']['readFrom'], "r")
     log.debug("reading from file {}".format(config['general']['readFrom']))
 else:
-    port = serial.Serial(serial_device, baudrate=baud, timeout=int(config['general']['timeout']))
-    log.info( "serial port {} initilized with {}".format(serial_device, baud))   
+    to = int(config['general']['timeout'])
+    port = serial.Serial(serial_device, baudrate=baud, timeout=to)
+    log.info( "serial port {} initilized with {}, timeout {}".format(serial_device, baud, to))   
 
 rx = re.compile( r'[0-9]+\.(jpg|png)$' )
 images = {}
@@ -301,6 +309,10 @@ def term_with_delay():
     sleep(5)
     term_and_exit()
 
+def reboot_with_delay():
+    sleep(5)
+    os.system('reboot')
+
 # HTTPRequestHandler class
 class testHTTPServer_RequestHandler(BaseHTTPRequestHandler):
     global version,log
@@ -346,6 +358,12 @@ class testHTTPServer_RequestHandler(BaseHTTPRequestHandler):
     # GET
     def do_GET(self):
         url = urlparse(self.path)
+        if url.path == '/reboot':
+            thread = threading.Thread(target=reboot_with_delay)
+            thread.start()
+            self.sendJsonResponse('{ "result": "success", "message": "server is rebooting. Hold on" }' )
+            return
+
         if url.path == '/restart':
             thread = threading.Thread(target=term_with_delay)
             thread.start()
@@ -407,11 +425,11 @@ def readNextLine():
             current_connection = None
             return None
         r = r.strip().decode(charset)
-        log.debug("got line '{}'".format(r))
+        if len(r)>0: log.debug("got line '{}'".format(r))
         return r
     elif port:
         r = port.readline().strip().decode(charset)
-        log.debug("got line '{}'".format(r))
+        if len(r)>0: log.debug("got line '{}'".format(r))
         return r
     elif file:
         r = file.readline()
