@@ -92,6 +92,11 @@
                        showMessage(data.message, data.result == 'success' ? 'green':'red');
                     }});
                 });
+                $('#rebootBtn').click( function() {
+                    $.ajax({url: "/reboot", success: function(data){
+                       showMessage(data.message, data.result == 'success' ? 'green':'red');
+                    }});
+                });
             });
         </script>
         <section class="main-content">
@@ -124,7 +129,7 @@
                             </div>
                         </div>
                     </div>
-                    <div class="cm-col-md-5">
+                    <div class="cm-col-md-4">
                         <div class="cm-card">
                             <div class="cm-card-header">
                                 Test Command
@@ -141,17 +146,21 @@
                             </div>
                         </div>
                     </div>
-                    <div class="cm-col-md-3">
+                    <div class="cm-col-md-4">
                         <div class="cm-card">
                             <div class="cm-card-header">
                                 Utility
                             </div>
                             <div class="cm-card-body">
                                     <button id="openLog" class="cm-btn primary" onclick="window.open('/log', '_blank');">Open Log</button>
-                                    <button id="restartBtn" class="cm-btn secondary">Restart</button>
+                                    <button id="restartBtn" class="cm-btn primary">Restart</button>
+                                    <button id="rebootBtn" class="cm-btn error">Reboot</button>
+                                    <p>
+                                        Show logs, restarts the serial media service or reboots the pi.
+                                    </p>
                             </div>
                             <div class="cm-card-footer">
-                                Show logs or restart the serial media service.
+                                
                             </div>
                         </div>
                     </div>
