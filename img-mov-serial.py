@@ -320,7 +320,7 @@ def handleCmd( tokens ):
             if movie != movie_playing:
                 follow_task = 1
                 term_running()
-                play_movie(movie)
+                play_movie(movie, 0)
             else:
                 log.info("same movie already playing ({})".format(movie_playing))
             return 0
