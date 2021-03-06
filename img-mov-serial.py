@@ -153,13 +153,25 @@ for i in filter(rx.search, os.listdir(basedir)):
     defaultmovies[k] = i
     k += 1
 
+# generate dictionary for startupmovies
+rx = re.compile( r'startup.*\.(mp4|3gp|mov|avi)$' )
+startupmovies = {}
+k = 0
+for i in filter(rx.search, os.listdir(basedir)):
+    startupmovies[k] = i
+    k += 1
+
+
 log.info( "images found: {}".format( images ))
 log.info( "movies found: {}".format( movies ))
 log.info( "defaultimages found: {}".format( defaultimages ))
 log.info( "defaultmovies found: {}".format( defaultmovies ))
+log.info( "startupmovies found: {}".format( startupmovies ))
+
 movie_playing = 0
 processes = {}
 follow_task = 0
+instartup = 1
 
 class Task(object):
     def __init__(self, type, id, proc):
@@ -171,7 +183,9 @@ def onProcessExit(task):
     global processes, follow_task
     log.info("player process {} playing {} exited".format(task.proc.pid, task.playing))
     del processes[task.proc.pid]
-    if len(processes) == 0 and follow_task == 0: check_for_defaults()
+    if len(processes) == 0 and follow_task == 0: 
+       if instartup: check_for_startup()
+       else: check_for_defaults()
 
 def onFimProcessExit(task):
     global processes
@@ -250,6 +264,12 @@ def check_for_defaults():
         id = random.randint(0,len(defaultimages)-1)
         movie_playing = None
         show_image(defaultimages[id])
+
+def check_for_startup():
+    global startupmovies, movie_playing
+    if len(startupmovies) > 0:
+        id = random.randint(0,len(startupmovies)-1)
+        play_movie(startupmovies[id])
 
 def handleCmd( tokens ):
     global follow_task, log
@@ -438,7 +458,8 @@ def readNextLine():
         log.error("No input device")
 
 # main loop
-check_for_defaults()
+#check_for_defaults()
+check_for_startup()
 while shouldRun:
     if connection:
         log.debug("waiting for connection")
@@ -456,6 +477,7 @@ while shouldRun:
         if len(tokens) == 0:
             continue
         try:
+            instartup = 0
             handleCmd( tokens )
         except:
             log.error("Oops! "+sys.exc_info()[0]+" occured.")
