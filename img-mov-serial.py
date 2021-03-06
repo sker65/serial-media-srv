@@ -183,6 +183,7 @@ def onProcessExit(task):
     global processes, follow_task
     log.info("player process {} playing {} exited".format(task.proc.pid, task.playing))
     del processes[task.proc.pid]
+    movie_playing = 0
     if len(processes) == 0 and follow_task == 0: 
        if instartup: check_for_startup()
        else: check_for_defaults()
