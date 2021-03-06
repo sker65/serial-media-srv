@@ -45,6 +45,7 @@ config['general']['timeout'] = '10'
 config['general']['httpport'] = '31009'
 config['player']={}
 config['player']['exec'] = 'omxplayer -b --no-osd'
+config['player']['loop'] = 'omxplayer -b --no-osd --loop'
 config['viewer']={}
 config['viewer']['exec'] = 'fim -a -q'
 config['slide']={}
@@ -127,7 +128,7 @@ elif config.has_option('general', 'readFrom'):
 else:
     to = int(config['general']['timeout'])
     port = serial.Serial(serial_device, baudrate=baud, timeout=to)
-    log.info( "serial port {} initilized with {}, timeout {}".format(serial_device, baud, to))   
+    log.info( "serial port {} initilized with {}, timeout {}".format(serial_device, baud, to))
 
 rx = re.compile( r'[0-9]+\.(jpg|png)$' )
 images = {}
@@ -169,6 +170,7 @@ log.info( "defaultmovies found: {}".format( defaultmovies ))
 log.info( "startupmovies found: {}".format( startupmovies ))
 
 movie_playing = 0
+movie_repeat = 0
 processes = {}
 follow_task = 0
 instartup = 1
@@ -180,13 +182,12 @@ class Task(object):
         self.playing = id
 
 def onProcessExit(task):
-    global processes, follow_task
-    log.info("player process {} playing {} exited".format(task.proc.pid, task.playing))
+    global processes, follow_task, movie_playing
+    log.info("player process {} playing {} exited movie_playing {}".format(task.proc.pid, task.playing, movie_playing))
     del processes[task.proc.pid]
     movie_playing = 0
-    if len(processes) == 0 and follow_task == 0: 
-       if instartup: check_for_startup()
-       else: check_for_defaults()
+    if len(processes) == 0 and follow_task == 0:
+       check_for_defaults()
 
 def onFimProcessExit(task):
     global processes
@@ -221,11 +222,12 @@ def term_running():
             task.proc.send_signal(signal.SIGINT)
             task.proc.kill()
 
-def play_movie(name):
+def play_movie(name, loop):
     global movie_playing, config, log, current_connection
     media = Path(name).absolute()
     movie_playing = name
-    args = config['player']['exec'].split()
+    if (loop == 0): args = config['player']['exec'].split()
+    else: args = config['player']['loop'].split()
     args.append( media.as_posix() )
     log.debug("running: {}".format(args))
     player = popenAndCall(onProcessExit, 1, name, args, stdin=PIPE, stdout=PIPE, shell=False )
@@ -260,7 +262,7 @@ def check_for_defaults():
     global defaultmovies, defaultimages, movie_playing
     if len(defaultmovies) > 0:
         id = random.randint(0,len(defaultmovies)-1)
-        play_movie(defaultmovies[id])
+        play_movie(defaultmovies[id], 0)
     if len(defaultimages) > 0:
         id = random.randint(0,len(defaultimages)-1)
         movie_playing = None
@@ -270,17 +272,18 @@ def check_for_startup():
     global startupmovies, movie_playing
     if len(startupmovies) > 0:
         id = random.randint(0,len(startupmovies)-1)
-        play_movie(startupmovies[id])
+        play_movie(startupmovies[id], 1)
 
 def handleCmd( tokens ):
     global follow_task, log
     cmd = tokens[0].upper()
     log.debug("handling cmd '{}' args {}".format(cmd,tokens[1:]))
     if cmd == 'STOP':
+        movie_repeat = 0
         term_running()
         # not necessary on exit handler does it //check_for_defaults()
         return 0
-    elif cmd == 'PLAY' and len(tokens) > 1:
+    elif (cmd == 'PLAY' or cmd == 'LOOP') and len(tokens) > 1:
         media = tokens[1]
         if Path(media).is_file():
             if media.endswith('.png') or media.endswith('.jpg'):
@@ -290,7 +293,9 @@ def handleCmd( tokens ):
                 if movie_playing != media:
                     follow_task = 1
                     term_running()
-                    play_movie(media)
+                    if cmd == 'LOOP': movie_loop = 1
+                    else: movie_loop = 0
+                    play_movie(media, movie_loop)
                 else:
                     log.info("same movie already playing ({})".format(movie_playing))
             return 0
@@ -311,7 +316,7 @@ def handleCmd( tokens ):
         # choose one
         i = random.randint(0,len(media)-1)
         movie = media[i]
-        if Path(movie).is_file():       
+        if Path(movie).is_file():
             if movie != movie_playing:
                 follow_task = 1
                 term_running()
@@ -459,8 +464,8 @@ def readNextLine():
         log.error("No input device")
 
 # main loop
-#check_for_defaults()
-check_for_startup()
+if len(startupmovies)>0: check_for_startup()
+else: check_for_defaults()
 while shouldRun:
     if connection:
         log.debug("waiting for connection")
@@ -478,7 +483,6 @@ while shouldRun:
         if len(tokens) == 0:
             continue
         try:
-            instartup = 0
             handleCmd( tokens )
         except:
             log.error("Oops! "+sys.exc_info()[0]+" occured.")
